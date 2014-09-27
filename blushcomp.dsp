@@ -35,21 +35,42 @@ import ("compressor-basics.dsp");
 
 import ("biquad-hpf.dsp");
 
-feedbackSW = hslider("[1]feedback/feedforward", 0, 0, 1 , 1);
+ratio 		= hslider("[1] Ratio   [tooltip: A compression Ratio of N means that for each N dB increase in input signal level above Threshold, the output level goes up 1 dB]", 10, 1, 20, 0.1);
+threshold 	= hslider("[2] Threshold [unit:dB]   [tooltip: When the signal level exceeds the Threshold (in dB), its level is compressed according to the Ratio]", 0, -20, 20, 0.1);
+attack 		= time_ratio_attack(hslider("[3] Attack [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new lower target level (the compression `kicking in')]", 120, 0.1, 500, 0.1)/1000) ;
+release 	= time_ratio_release(hslider("[4] Release [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new higher target level (the compression 'releasing')]", 120, 0.1, 2000, 0.1)/1000);
+ingain 		= hslider("[5] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999);
+
+rms_speed        = 0.0005 * min(192000.0, max(22050.0, SR));
+
+/*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
+/*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
+/*release		 = time_ratio_release( hslider("release (ms)", 300,   0.1, 1200.0, 0.001) / 1000 );*/
+
+/*ratio		 = hslider("compression ratio",          5,    1.5,   20,   0.5);*/
+makeup_gain 	 = hslider("[6]makeup gain (dB)",           0,      0,   40,   0.5); // DB
+
+drywet		 = hslider("dry-wet", 1.0, 0.0, 1.0, 0.1);
+
+bypass_switch = select2( hslider("bypass", 0, 0, 1, 1), 1.0, 0.0);
+
+feedFwBw = hslider("[1]feedback/feedforward", 0, 0, 1 , 0.001);
 envelop = abs : max ~ -(1.0/SR) : max(db2linear(-70)) : linear2db;
 meter = (_<:(_, (envelop :(vbargraph("[3][unit:dB][tooltip: input level in dB]", -30, +0)))):attach);
 power = hslider("power", 1, 1, 11 , 0.001)*3:pow(3);
-ratelimit = hslider("ratelimit", 0, 0, 1 , 1);
+ratelimit = hslider("ratelimit", 0, 0, 1 , 0.001);
 
 SATURATE(x) = tanh(x);
 //SATURATE(x) = 2 * x * (1-abs(x) * 0.5);
 
 MAKEITFAT(gain,dry) = (dry * (gain:meter));// + (SATURATE(dry / DB2COEFF(threshold)) * DB2COEFF(threshold) * (1 - gain));
 
+crossfade(x,a,b) = a*(1-x),b*x : +;
 
 /*COMP = (_ <: ( HPF : DETECTOR : RATIO : DB2COEFF )):pow(power);*/
-COMP = (_ <: ( HPF : DETECTOR : RATIO <: ( RATELIMITER ~ _ ),_:select2(ratelimit) : DB2COEFF )):pow(power);
-blushcomp =(_ <:( select2(feedbackSW,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(makeup_gain));
-process = blushcomp, blushcomp;
+COMP = (_ <: ( HPF : DETECTOR : RATIO : DB2COEFF :pow(power):COEFF2DB<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : DB2COEFF ));
+blushcomp =(_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(makeup_gain));
+process =blushcomp, blushcomp;
+//process = crossfade(ratelimit);
 
 

@@ -89,18 +89,18 @@ time_ratio_release(t) = exp(1) / ( t * SR * time_ratio_target_rel );
 
 // RMS at 0.5 ms. It should allow for a smoother peak style compression
 // min(max()) games due to buffer allocation. faust has to know how large this can become.
-rms_speed        = 0.0005 * min(192000.0, max(22050.0, SR));
+/*rms_speed        = 0.0005 * min(192000.0, max(22050.0, SR));*/
 
-threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);
-attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );
-release		 = time_ratio_release( hslider("release (ms)", 300,   0.1, 1200.0, 0.001) / 1000 );
+/*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
+/*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
+/*release		 = time_ratio_release( hslider("release (ms)", 300,   0.1, 1200.0, 0.001) / 1000 );*/
 
-ratio		 = hslider("compression ratio",          5,    1.5,   20,   0.5);
-makeup_gain 	 = hslider("makeup gain (dB)",           0,      0,   40,   0.5); // DB
+/*ratio		 = hslider("compression ratio",          5,    1.5,   20,   0.5);*/
+/*makeup_gain 	 = hslider("makeup gain (dB)",           0,      0,   40,   0.5); // DB*/
 
-drywet		 = hslider("dry-wet", 1.0, 0.0, 1.0, 0.1);
+/*drywet		 = hslider("dry-wet", 1.0, 0.0, 1.0, 0.1);*/
 
-bypass_switch = select2( hslider("bypass", 0, 0, 1, 1), 1.0, 0.0);
+/*bypass_switch = select2( hslider("bypass", 0, 0, 1, 1), 1.0, 0.0);*/
 
 /*
 // Hard-wired settings for sndfile tests
