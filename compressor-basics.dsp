@@ -20,8 +20,8 @@
 import("rms.dsp");
 
 COEFF2DB(x) = log10(x) * 20;
-DB2COEFF(x) = select2( (x < -318.8) , pow(10, x / 20), 0);
-//DB2COEFF(x) = pow(10, x / 20);
+//DB2COEFF(x) = select2( (x < -318.8) , pow(10, x / 20), 0);
+DB2COEFF(x) = pow(10, x / 20);
 
 
 // apply a threshold to the value and then normalize it to 0
@@ -120,7 +120,7 @@ DRYWET_STEREO(l, r, ratio) = ( (DRYWET(l, ratio)), (DRYWET(r, ratio)));
 
 
 //maximum_rate = 10.0/SR;
-maximum_rate = 96.0/SR;
+//maximum_rate = 96.0/SR;
 //maximum_rate = 512.0/SR;
 
 RATELIMITER_INTERNAL(pt, ct, prevx, x) = 

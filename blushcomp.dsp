@@ -59,16 +59,17 @@ envelop = abs : max ~ -(1.0/SR) : max(db2linear(-70)) : linear2db;
 meter = (_<:(_, (envelop :(vbargraph("[3][unit:dB][tooltip: input level in dB]", -30, +0)))):attach);
 power = hslider("power", 1, 1, 11 , 0.001)*3:pow(3);
 ratelimit = hslider("ratelimit", 0, 0, 1 , 0.001);
+maximum_rate = hslider("maximum rate", 3, 1, 50 , 0.001):pow(4)/SR;
 
 SATURATE(x) = tanh(x);
 //SATURATE(x) = 2 * x * (1-abs(x) * 0.5);
 
-MAKEITFAT(gain,dry) = (dry * (gain:meter));// + (SATURATE(dry / DB2COEFF(threshold)) * DB2COEFF(threshold) * (1 - gain));
+MAKEITFAT(gain,dry) = (dry * (gain:meter));// + (SATURATE(dry / db2linear(threshold)) * db2linear(threshold) * (1 - gain));
 
 crossfade(x,a,b) = a*(1-x),b*x : +;
 
-/*COMP = (_ <: ( HPF : DETECTOR : RATIO : DB2COEFF )):pow(power);*/
-COMP = (_ <: ( HPF : DETECTOR : RATIO : DB2COEFF :pow(power):COEFF2DB<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : DB2COEFF ));
+/*COMP = (_ <: ( HPF : DETECTOR : RATIO : db2linear )):pow(power);*/
+COMP = (_ <: ( HPF : DETECTOR : RATIO : db2linear :pow(power):linear2db<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ));
 blushcomp =(_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(makeup_gain));
 process =blushcomp, blushcomp;
 //process = crossfade(ratelimit);
