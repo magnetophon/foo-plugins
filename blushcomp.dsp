@@ -74,7 +74,7 @@ MAKEITFAT(gain,dry) = (dry * (gain:meter));// + (SATURATE(dry / db2linear(thresh
 crossfade(x,a,b) = a*(1-x),b*x : +;
 
 /*COMP = (_ <: ( HPF : DETECTOR : RATIO : db2linear )):pow(power);*/
-COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(maxGR) : min (1) :pow(prePower):linear2db<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear )):pow(1/postPower))):max(maxGR)*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
+COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(db2linear(-140)) : min (1) :pow(prePower):linear2db<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear )):pow(1/postPower))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(makeup_gain));
 process =blushcomp, blushcomp;
 //process = crossfade(ratelimit);
