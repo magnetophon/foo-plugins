@@ -51,7 +51,7 @@ rms_speed        = 0.0005 * min(192000.0, max(22050.0, SR));
 /*release		 = time_ratio_release( hslider("release (ms)", 300,   0.1, 1200.0, 0.001) / 1000 );*/
 
 /*ratio		 = hslider("compression ratio",          5,    1.5,   20,   0.5);*/
-makeup_gain 	 = hslider("[6]makeup gain (dB)",           0,      0,   40,   0.5); // DB
+makeup_gain 	 = hslider("[6]makeup gain (dB)",           -6,      -40,   40,   0.5); // DB
 
 drywet		 = hslider("dry-wet", 1.0, 0.0, 1.0, 0.1);
 
@@ -74,7 +74,7 @@ MAKEITFAT(gain,dry) = (dry * (gain:meter));// + (SATURATE(dry / db2linear(thresh
 crossfade(x,a,b) = a*(1-x),b*x : +;
 
 /*COMP = (_ <: ( HPF : DETECTOR : RATIO : db2linear )):pow(power);*/
-COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear :pow(prePower):linear2db<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear )):pow(1/postPower))):max(maxGR)*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
+COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(maxGR) : min (1) :pow(prePower):linear2db<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear )):pow(1/postPower))):max(maxGR)*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(makeup_gain));
 process =blushcomp, blushcomp;
 //process = crossfade(ratelimit);
