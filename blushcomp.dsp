@@ -60,6 +60,7 @@ ratio       = compressor_group(hslider("[3] Ratio   [tooltip: A compression Rati
 attack      = compressor_group(time_ratio_attack(hslider("[4] Attack [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new lower target level (the compression `kicking in')]", 36.7, 0.1, 500, 0.1)/1000)) ;
 release     = compressor_group(time_ratio_release(hslider("[5] Release [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new higher target level (the compression 'releasing')]",81.4, 0.1, 2000, 0.1)/1000));
 hpf_switch  = compressor_group(select2( hslider("[6]sidechain hpf", 1, 0, 1, 1), 1.0, 0.0));
+hpf_freq    = compressor_group( hslider("[6]sidechain hpf", 75, 5, 400, 1));
 
 prePower      = post_group(hslider("[0]pre power", 7.504, 1, 11 , 0.001)*3:pow(3));
 ratelimit     = post_group(hslider("[1]ratelimit", 0, 0, 1 , 0.001));
@@ -98,7 +99,7 @@ crossfade(x,a,b) = a*(1-x),b*x : +;
 
 /*COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(db2linear(-140)) : min (1) :pow(prePower):linear2db*/
 /*<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ): max(MIN_flt) : min (MAX_flt)):pow(1/postPower))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);*/
-COMP = (1/((1/(((_ <: ( HPF <:crossfade(peakRMS,_,RMS(rms_speed)): DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
+COMP = (1/((1/(((_ <: ( HPF(hpf_freq)  <:crossfade(peakRMS,_,RMS(rms_speed)): DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
 <: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(1/postPower))))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(outgain));
 process =blushcomp, blushcomp;
