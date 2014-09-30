@@ -69,7 +69,7 @@ ratelimit     = post_group(hslider("[1]ratelimit[tooltip: ]", 1, 0, 1 , 0.001));
 maximum_rate  = post_group(hslider("[2]maximum rate[tooltip: ]", 9.366, 1, 50 , 0.001):pow(4)/SR);
 postPower     = post_group(hslider("[3]post power[tooltip: ]", 6, 1, 33 , 0.001):pow(3));
 maxGR         = post_group(hslider("[4] Max Gain Reduction [unit:dB]   [tooltip: The maximum gain reduction]",-28.5, -60, 0, 0.1) : db2linear : smooth(0.999));
-curve         = post_group(hslider("[5]curve[tooltip: ]", 0, -1, 1 , 0.001):pow(5));
+curve         = post_group(hslider("[5]curve[tooltip: ]", 0, -1, 1 , 0.001):pow(1));
 feedFwBw      = post_group(hslider("[6]feedback/feedforward[tooltip: ]", 0.008, 0, 1 , 0.001));
 outgain       = post_group(hslider("[7]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
 
@@ -109,8 +109,14 @@ rmsFade = _<:crossfade(peakRMS,_,RMS(rms_speed)); // bypass makes the dsp double
 /*COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(db2linear(-140)) : min (1) :pow(prePower):linear2db*/
 /*<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ): max(MIN_flt) : min (MAX_flt)):pow(1/postPower))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);*/
 
-COMP = (1/((1/(((_ <: ( HPF(hpf_freq) :rmsFade: DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
-<: _,( RATELIMITER ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(1/postPower))))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1):(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):_*(1-maxGR):_+maxGR;
+detector = ((_ <: ( HPF(hpf_freq) :rmsFade: DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
+<: _,( RATELIMITER ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(1/postPower)));
+
+
+maxGRshaper = detector:max(maxGR);
+//maxGRshaper = (1/((1/detector*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
+
+COMP = maxGRshaper:(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):_*(1-maxGR):_+maxGR;
 
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(outgain));
 
