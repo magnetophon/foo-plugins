@@ -39,11 +39,16 @@ import ("rms.dsp");
 import ("biquad-hpf.dsp");
 import ("rms.dsp");
 
-
+//the maximum size of the array for calculating the rms mean
+//should be proportional to SR
+// the size of a par() needs to be known at compile time, so (SR/100) doesn't work
+rmsMaxSize = 441;
 
 // 
 MAX_flt = fconstant(int LDBL_MAX, <float.h>);
 MIN_flt = fconstant(int LDBL_MIN, <float.h>);
+
+
 
 main_group(x)  = (hgroup("[1]", x));
 
@@ -56,7 +61,7 @@ post_group(x)        = knob_group(vgroup("[2]", x));
 drywet		 = compressor_group(hslider("[0]dry-wet[tooltip: ]", 1.0, 0.0, 1.0, 0.1));
 ingain      = compressor_group(hslider("[1] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999));
 peakRMS     = compressor_group(hslider("[2] peak/RMS [tooltip: Peak or RMS level detection",1, 0, 1, 0.001));
-rms_speed   = compressor_group(hslider("[3]RMS speed[tooltip: ]",96, 1,   440,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
+rms_speed   = compressor_group(hslider("[3]RMS size[tooltip: ]",96, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
 threshold   = compressor_group(hslider("[4] Threshold [unit:dB]   [tooltip: When the signal level exceeds the Threshold (in dB), its level is compressed according to the Ratio]", -21.1, -80, 0, 0.1));
 ratio       = compressor_group(hslider("[5] Ratio   [tooltip: A compression Ratio of N means that for each N dB increase in input signal level above Threshold, the output level goes up 1 dB]", 20, 1, 20, 0.1));
 attack      = compressor_group(time_ratio_attack(hslider("[6] Attack [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new lower target level (the compression `kicking in')]", 70.8, 0.1, 500, 0.1)/1000)) ;
@@ -64,17 +69,17 @@ release     = compressor_group(time_ratio_release(hslider("[7] Release [unit:ms]
 //hpf_switch  = compressor_group(select2( hslider("[8]sidechain hpf[tooltip: ]", 1, 0, 1, 1), 1.0, 0.0));
 hpf_freq    = compressor_group( hslider("[8]sidechain hpf[tooltip: ]", 101, 1, 400, 1));
 
-powerScale(x) =((x>=0)*((x+1):pow(3)))+((x<0)* (1/((((x*-1)+1):pow(3)))));
+powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
 
-prePower      = post_group(hslider("[0]pre power[tooltip: ]", 7.4, -33,33 , 0.001):powerScale);
-ratelimit     = post_group(hslider("[1]ratelimit[tooltip: ]", 1, 0, 1 , 0.001));
+prePower      = post_group(hslider("[0]pre power[tooltip: ]", -7.4, -33,33 , 0.001):powerScale);
+ratelimit     = post_group(hslider("[1]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
 maximum_rate  = post_group(hslider("[2]maximum rate[tooltip: ]", 7.272, 1, 50 , 0.001):pow(4)/SR);
 postPower     = post_group(hslider("[3]post power[tooltip: ]", 2.048, -33, 33 , 0.001):powerScale);
-maxGR         = post_group(hslider("[4] Max Gain Reduction [unit:dB]   [tooltip: The maximum gain reduction]",-12, -60, 0, 0.1) : db2linear : smooth(0.999));
-curve         = post_group(hslider("[5]curve[tooltip: ]", -0.797, -1, 1 , 0.001));
-feedFwBw      = post_group(hslider("[6]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
-outgain       = post_group(hslider("[7]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
-shape         = post_group(hslider("[8]shape[tooltip: ]", 10, 1, 100 , 0.001):pow(2));
+maxGR         = post_group(hslider("[4] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-12, -60, 0, 0.1) : db2linear : smooth(0.999));
+curve         = post_group(hslider("[5]curve[tooltip: ]", 0.797, -1, 1 , 0.001)*-1);
+shape         = post_group(((hslider("[6]shape[tooltip: ]", 90, 1, 100 , 0.001)*-1)+101):pow(2));
+feedFwBw      = post_group(hslider("[7]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
+outgain       = post_group(hslider("[8]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
 
 /*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
 /*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
@@ -107,7 +112,7 @@ rmsFade = _<:crossfade(peakRMS,_,RMS(rms_speed)); // bypass makes the dsp double
 /*<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ): max(MIN_flt) : min (MAX_flt)):pow(1/postPower))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);*/
 
 detector = ((_ <: ( HPF(hpf_freq) :rmsFade: DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
-<: _,( RATELIMITER ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(1/postPower)));
+<: _,( RATELIMITER ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(postPower)));
 
 
 maxGRshaper = _;//max(maxGR);
