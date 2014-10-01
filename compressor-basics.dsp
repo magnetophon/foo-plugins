@@ -123,7 +123,7 @@ DRYWET_STEREO(l, r, ratio) = ( (DRYWET(l, ratio)), (DRYWET(r, ratio)));
 //maximum_rate = 96.0/SR;
 //maximum_rate = 512.0/SR;
 
-RATELIMITER_INTERNAL(pt, ct, prevx, x) = 
+RATELIMITER_INTERNAL(maximum_rate,pt, ct, prevx, x) = 
      select2( abs(ct-pt) > maximum_rate, x, 
               prevx - pt + maximum_rate * select2( (x < prevx), 1.0, -1.0) );
 
@@ -134,8 +134,8 @@ OVERSHOOT_CORRECTION(limited_gain, target_gain, tangent) =
 		 select2( (limited_gain > target_gain), limited_gain, target_gain),
 		 select2( (limited_gain > target_gain), target_gain, limited_gain));
 
-RATELIMITER(prevx, x) = 
-	( RATELIMITER_INTERNAL( prevx@1 - prevx, prevx - x, prevx, x), x, (prevx - x) ) :
+RATELIMITER(maximum_rate,prevx, x) = 
+	( RATELIMITER_INTERNAL( prevx@1 - prevx, prevx - x, prevx, x,maximum_rate), x, (prevx - x) ) :
 	  OVERSHOOT_CORRECTION;
 
 
