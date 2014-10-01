@@ -64,16 +64,17 @@ release     = compressor_group(time_ratio_release(hslider("[7] Release [unit:ms]
 //hpf_switch  = compressor_group(select2( hslider("[8]sidechain hpf[tooltip: ]", 1, 0, 1, 1), 1.0, 0.0));
 hpf_freq    = compressor_group( hslider("[8]sidechain hpf[tooltip: ]", 101, 1, 400, 1));
 
+powerScale(x) =((x>=0)*((x+1):pow(3)))+((x<0)* (1/((((x*-1)+1):pow(3)))));
 
-prePower      = post_group(hslider("[0]pre power[tooltip: ]", 8.4, 1,33 , 0.001):pow(3));
+prePower      = post_group(hslider("[0]pre power[tooltip: ]", 7.4, -33,33 , 0.001):powerScale);
 ratelimit     = post_group(hslider("[1]ratelimit[tooltip: ]", 1, 0, 1 , 0.001));
 maximum_rate  = post_group(hslider("[2]maximum rate[tooltip: ]", 7.272, 1, 50 , 0.001):pow(4)/SR);
-postPower     = post_group(hslider("[3]post power[tooltip: ]", 3.048, 1, 33 , 0.001):pow(3));
+postPower     = post_group(hslider("[3]post power[tooltip: ]", 2.048, -33, 33 , 0.001):powerScale);
 maxGR         = post_group(hslider("[4] Max Gain Reduction [unit:dB]   [tooltip: The maximum gain reduction]",-12, -60, 0, 0.1) : db2linear : smooth(0.999));
 curve         = post_group(hslider("[5]curve[tooltip: ]", -0.797, -1, 1 , 0.001));
 feedFwBw      = post_group(hslider("[6]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
 outgain       = post_group(hslider("[7]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
-shape         = post_group(hslider("[8]shape[tooltip: ]", 10, 1, 10 , 0.001):pow(2));
+shape         = post_group(hslider("[8]shape[tooltip: ]", 10, 1, 100 , 0.001):pow(2));
 
 /*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
 /*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
