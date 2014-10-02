@@ -42,7 +42,7 @@ import ("rms.dsp");
 //the maximum size of the array for calculating the rms mean
 //should be proportional to SR
 // the size of a par() needs to be known at compile time, so (SR/100) doesn't work
-rmsMaxSize = 441;
+rmsMaxSize = 110; //441
 
 // 
 MAX_flt = fconstant(int LDBL_MAX, <float.h>);
@@ -71,17 +71,21 @@ hpf_freq    = compressor_group( hslider("[8]sidechain hpf[tooltip: ]", 101, 1, 4
 
 powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
 
-prePower      = post_group(hslider("[0]pre power[tooltip: ]", -7.4, -33,33 , 0.001):powerScale);
-ratelimit     = post_group(hslider("[1]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
-maximum_rate  = post_group(hslider("[2]maximum rate[tooltip: ]", 7.272, 1, 50 , 0.001):pow(4)/SR);
-postPower     = post_group(hslider("[3]post power[tooltip: ]", 2.048, -33, 33 , 0.001):powerScale);
-maxGR         = post_group(hslider("[4] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-12, -60, 0, 0.1) : db2linear : smooth(0.999));
-curve         = post_group(hslider("[5]curve[tooltip: ]", 0.797, -1, 1 , 0.001)*-1);
-shape         = post_group(((hslider("[6]shape[tooltip: ]", 90, 1, 100 , 0.001)*-1)+101):pow(2));
-maxRate         = post_group(hslider("[7]max rate[tooltip: ]", 7.272, 1, 50 , 0.001):pow(4)/SR);
-feedFwBw      = post_group(hslider("[8]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
-outgain       = post_group(hslider("[9]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
-postRL        = post_group(hslider("[10]post ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
+prePower      = post_group(hslider("[00]pre power[tooltip: ]", -7.4, -33,33 , 0.001):powerScale);
+ratelimit     = post_group(hslider("[01]pre ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
+maximum_rate  = post_group(hslider("[02]pre max rate[unit:dB/s][tooltip: ]", 20, 6, 2000 , 1)/SR);
+postPower     = post_group(hslider("[03]post power[tooltip: ]", 2.048, -33, 33 , 0.001):powerScale);
+maxGR         = post_group(hslider("[04] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-12, -60, 0, 0.1) : db2linear : smooth(0.999));
+curve         = post_group(hslider("[05]curve[tooltip: ]", 0.797, -1, 1 , 0.001)*-1);
+shape         = post_group(((hslider("[06]shape[tooltip: ]", 90, 1, 100 , 0.001)*-1)+101):pow(2));
+postRL        = post_group(hslider("[07]post ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
+maxRateAttack = post_group(hslider("[08]post max rate att[unit:dB/s][tooltip: ]", 20, 6, 2000 , 1)/SR);
+maxRateDecay  = post_group(hslider("[09]post max ratei dec[unit:dB/s][tooltip: ]", 20, 6, 2000 , 1)/SR);
+feedFwBw      = post_group(hslider("[10]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
+outgain       = post_group(hslider("[11]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
+amount        = post_group(hslider("[11]amount[tooltip: ]", 1, 0, 5000 , 0.001));
+
+//todo: limiter/clipper in the fb path
 /*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
 /*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
 /*release		 = time_ratio_release( hslider("release (ms)", 300,   0.1, 1200.0, 0.001) / 1000 );*/
@@ -113,7 +117,7 @@ rmsFade = _<:crossfade(peakRMS,_,RMS(rms_speed)); // bypass makes the dsp double
 /*<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ): max(MIN_flt) : min (MAX_flt)):pow(1/postPower))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);*/
 
 detector = ((_ <: ( HPF(hpf_freq) :rmsFade: DETECTOR : RATIO : db2linear:min(1):max(MIN_flt)<:_,_:pow(powlim( prePower)):linear2db
-<: _,( RATELIMITER(maximum_rate) ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(postPower)));
+<: _,( rateLimiter(maximum_rate,maximum_rate) ~ _ ):crossfade(ratelimit) : db2linear :min(1):max(MIN_flt)))<:_,_:pow(powlim(postPower)));
 
 
 maxGRshaper = _;//max(maxGR);
@@ -129,15 +133,26 @@ curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
     p = exp(fact*10*(log(2)));
 };
 
-
+rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0):max(maxGR:linear2db)
+with {
+    tangent     = x- prevx;
+    avgChange   = abs(tangent@1-tangent@2):integrate(rms_speed)*amount;
+    newtangent  = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
+    plus        = tangent*((abs(avgChange)*-1):db2linear);
+    minus       = tangent*((abs(avgChange)*-1):db2linear);//tangent+avgChange;
+       //select2(abs(tangent)>maxRate,tangent,maxRate);
+	integrate(size,x) = delaysum(size, x)/size;
+    
+    delaysum(size) = _ <: par(i,rmsMaxSize, @(i)*(i<size)) :> _;
+    };
 
 COMP = detector:maxGRshaper:(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):tanshape(shape):_*(1-maxGR):_+maxGR:linear2db
-<: _,( RATELIMITER(maxRate) ~ _ ):crossfade(postRL) : db2linear;//:( RATELIMITER(maxRate) ~ _ );
+<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(postRL) : db2linear;//:( rateLimiter(maxRate) ~ _ );
 
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : MAKEITFAT)~_)*(db2linear(outgain));
 
 process =blushcomp, blushcomp;
 
-/*process = ( RATELIMITER(maxRate) ~ _ );*/
+/*process = ( rateLimiter(maxRate) ~ _ );*/
 
 
