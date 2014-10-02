@@ -83,7 +83,7 @@ maxRateAttack = post_group(hslider("[08]post max rate att[unit:dB/s][tooltip: ]"
 maxRateDecay  = post_group(hslider("[09]post max rate dec[unit:dB/s][tooltip: ]", 20, 6, 8000 , 1)/SR);
 feedFwBw      = post_group(hslider("[10]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
 outgain       = post_group(hslider("[11]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
-amount        = post_group(hslider("[11]amount[tooltip: ]", 1, 0, 20000 , 0.001));
+amount        = post_group(hslider("[11]amount[tooltip: ]", 1, 0, 200000 , 0.001));
 forget        = post_group(hslider("[12]forget[tooltip: ]", 1, 0, 100 , 1));
 //todo: limiter/clipper in the fb path
 /*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
