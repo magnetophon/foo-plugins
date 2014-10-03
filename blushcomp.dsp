@@ -1,11 +1,8 @@
-//todo: limiter/clipper in the fb path
 /*
- *  Copyright (C) 2009 Sampo Savolainen
- *
+ *  Copyright (C) 2014 Bart Brouns
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  the Free Software Foundation; version 2 of the License.
  *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -14,6 +11,11 @@
  */
 
 /*
+
+
+Based on blushcomp mono by Sampo Savolainen
+
+
 
  contort'o'comp
  warp
@@ -24,10 +26,10 @@
 
 */
 
-declare name      "foo blushcomp mono";
-declare author    "Sampo Savolainen";
-declare version   "0.9b";
-declare copyright "(c)Sampo Savolainen 2009";
+declare name      "CleanComp";
+declare author    "Bart Brouns";
+declare version   "0.1";
+declare copyright "(C) 2014 Bart Brouns";
 
 import ("math.lib");
 import ("music.lib");
@@ -82,9 +84,12 @@ postRL        = post_group(hslider("[07]post ratelimit amount[tooltip: ]", 1, 0,
 maxRateAttack = post_group(hslider("[08]post max rate att[unit:dB/s][tooltip: ]", 20, 6, 8000 , 1)/SR);
 maxRateDecay  = post_group(hslider("[09]post max rate dec[unit:dB/s][tooltip: ]", 20, 6, 8000 , 1)/SR);
 feedFwBw      = post_group(hslider("[10]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
-outgain       = post_group(hslider("[11]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
-amount        = post_group(hslider("[11]amount[tooltip: ]", 1, 0, 200000 , 0.001));
-forget        = post_group(hslider("[12]forget[tooltip: ]", 1, 0, 100 , 1));
+decayPower    = post_group(hslider("[11]decayPower[tooltip: ]", 1, 0, 200 , 0.001));
+decayMult     = post_group(hslider("[12]decayMult[tooltip: ]", 1, 0,500 , 0.001));
+forget        = post_group(hslider("[13]forget[tooltip: ]", 1, 0, 100 , 1));
+outgain       = post_group(hslider("[14]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
+
+
 //todo: limiter/clipper in the fb path
 /*threshold	 = hslider("threshold (dB)",         -10.0,  -60.0,   10.0, 1.0);*/
 /*attack		 = time_ratio_attack( hslider("attack (ms)", 10.0,    0.001,  400.0, 0.001) / 1000 );*/
@@ -138,7 +143,7 @@ curve_pow(fact,x) = x;
 rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0):max(maxGR:linear2db)
 with {
     tangent     = x- prevx;
-    avgChange   = abs(tangent@forget-tangent@(forget+1)):integrate(rms_speed)*amount;
+    avgChange   = ((abs(tangent@forget-tangent@(forget+1)):integrate(rms_speed)))*decayMult:pow(decayPower);
     newtangent  = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
     plus        = tangent*((abs(avgChange)*-1):db2linear);
     minus       = tangent;//*((abs(avgChange)*-1):db2linear);//tangent+avgChange;
