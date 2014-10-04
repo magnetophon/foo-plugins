@@ -84,9 +84,10 @@ postRL        = post_group(hslider("[07]post ratelimit amount[tooltip: ]", 1, 0,
 maxRateAttack = post_group(hslider("[08]post max rate att[unit:dB/s][tooltip: ]", 20, 6, 8000 , 1)/SR);
 maxRateDecay  = post_group(hslider("[09]post max rate dec[unit:dB/s][tooltip: ]", 20, 6, 8000 , 1)/SR);
 feedFwBw      = post_group(hslider("[10]feedback/feedforward[tooltip: ]", 0.000, 0, 1 , 0.001));
-decayPower    = post_group(hslider("[11]decayPower[tooltip: ]", 1, 0, 200 , 0.001));
-decayMult     = post_group(hslider("[12]decayMult[tooltip: ]", 1, 0,500 , 0.001));
-forget        = post_group(hslider("[13]forget[tooltip: ]", 1, 0, 100 , 1));
+decayMult     = post_group(hslider("[11]decayMult[tooltip: ]", 1, 0,20000 , 0.001)/100);
+decayPower    = post_group(hslider("[12]decayPower[tooltip: ]", 1, 0, 50 , 0.001));
+IM_size   = post_group(hslider("[13]IM_size[tooltip: ]",96, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
+//maxAuto      = post_group(hslider("[13]maxAuto[tooltip: ]", 0, 0, 1 , 0.001));
 outgain       = post_group(hslider("[14]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
 
 
@@ -134,19 +135,18 @@ tanshape(amp,x) =(tanh(amp*(x-1)))+1;
 //((tanh(amp*((x*2)-1)))/2)+0.5;
 
 
-curve_pow(fact,x) = x;
-/*((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with*/
-/*{*/
-    /*p = exp(fact*10*(log(2)));*/
-/*};*/
+curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
+{
+    p = exp(fact*10*(log(2)));
+};
 
 rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0):max(maxGR:linear2db)
 with {
     tangent     = x- prevx;
-    avgChange   = ((abs(tangent@forget-tangent@(forget+1)):integrate(rms_speed)))*decayMult:pow(decayPower);
+    avgChange   = abs((tangent@1)-(tangent@2)):integrate(IM_size)*decayMult:_+1:pow(decayPower)-1;
     newtangent  = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
     plus        = tangent*((abs(avgChange)*-1):db2linear);
-    minus       = tangent;//*((abs(avgChange)*-1):db2linear);//tangent+avgChange;
+    minus       = tangent;//*((abs(avgChange)*0.5):db2linear);
        //select2(abs(tangent)>maxRate,tangent,maxRate);
 	integrate(size,x) = delaysum(size, x)/size;
     
