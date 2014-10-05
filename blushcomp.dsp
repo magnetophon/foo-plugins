@@ -91,7 +91,7 @@ maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 3
 decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 20000 , 0,20000 , 0.001)/100);
 decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 50, 0, 50 , 0.001));
 IM_size        = ratelimit_group(hslider("[5]IM_size[tooltip: ]",108, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
-
+hiShelfFreq    = out_group(hslider("[5]hi shelf freq[tooltip: ]",108, 1,   400,   1));
 feedFwBw       = out_group(hslider("[0]feedback/feedforward[tooltip: ]", 0, 0, 1 , 0.001));
 outgain        = out_group(hslider("[1]output gain (dB)[tooltip: ]",           0,      -40,   40,   0.1):smooth(0.999)); // DB
 
@@ -102,6 +102,7 @@ bypass_switch = select2( hslider("bypass[tooltip: ]", 0, 0, 1, 1), 1.0, 0.0);
 powlim(x,base) = x:max(log(MAX_flt)/log(base)):  min(log(MIN_flt)/log(base));
 
 gainPlusMeter(gain,dry) = (dry * (gain:meter));
+hiShelfPlusMeter(gain,dry) = (dry :high_shelf(gain:meter:linear2db,hiShelfFreq));
 
 crossfade(x,a,b) = a*(1-x),b*x : +;
 
@@ -146,7 +147,7 @@ with {
 COMP = detector:maxGRshaper:(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):tanshape(shape):_*(1-maxGR):_+maxGR:linear2db
 <: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit) : db2linear;//:( rateLimiter(maxRate) ~ _ );
 
-blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : gainPlusMeter)~_)*(db2linear(outgain));
+blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : hiShelfPlusMeter)~_)*(db2linear(outgain));
 
 process =blushcomp, blushcomp;
 
