@@ -65,7 +65,7 @@ shape_group(x)      = post_group(vgroup("[0]shape", x));
 out_group(x)        = post_group(vgroup("[2]", x));
 
 envelop = abs : max ~ -(1.0/SR) : max(db2linear(-70)) : linear2db;
-meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, +20)))):attach);
+meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, 0)))):attach);
 
 drywet        = detector_group(hslider("[0]dry-wet[tooltip: ]", 1.0, 0.0, 1.0, 0.1));
 ingain        = detector_group(hslider("[1] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999));
@@ -95,7 +95,7 @@ bypass_switch = select2( hslider("bypass[tooltip: ]", 0, 0, 1, 1), 1.0, 0.0);
 
 
 ratelimit      = ratelimit_group(hslider("[0]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
-maxRateAttack  = ratelimit_group(hslider("[1]max attack[unit:dB/s][tooltip: ]", 1020, 6, 800000 , 1)/SR);
+maxRateAttack  = ratelimit_group(hslider("[1]max attack[unit:dB/s][tooltip: ]", 1020, 6, 8000 , 1)/SR);
 maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 3813, 6, 8000 , 1)/SR);
 decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 20000 , 0,20000 , 0.001)/100);
 decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 50, 0, 50 , 0.001));
@@ -163,7 +163,7 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 0.05*SR;
+predelay = 0.5*SR;
 
 delayed(x) = x@predelay;
 prevgain=1;
@@ -174,21 +174,21 @@ start
 //threshold:meter
 with {
     currentlevel = ((abs(x)):linear2db);
-    goingdown = ((currentlevel)>(threshold))|(prevgain>=prevtotal');
+    goingdown = ((currentlevel)>(threshold))|((prevgain>prevtotal));
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
-    down = (totaldown-start)/(predelay-1);
+    down = (prevtotal-prevstart)/(predelay);
     //down = totaldown(x)/predelay;
     totaldown = 
-       select2(prevgain>=prevtotal, 0  , newdown  );
+       select2(goingdown, 0  , newdown  );
     newdown =// (currentlevel+prevgain):THRESH(threshold);
     min(prevtotal,currentdown );
     //select2(0-((currentlevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
 
     currentdown = 0-((currentlevel):THRESH(threshold));
-    currentup = 0-((((abs(x@predelay+1)):linear2db)):THRESH(threshold));
+    currentup = 0;//-((((abs(x@predelay+1)):linear2db)):THRESH(threshold));
 
-    start = select2(prevgain>=prevtotal, 0  , select2(currentdown<prevtotal,prevstart,prevgain)):dbmeter;
+    start = select2(totaldown<prevtotal, 0  , select2(prevgain+down<prevtotal,prevstart,prevgain+down)):dbmeter;
     
     up = 800/SR;
 
@@ -208,7 +208,7 @@ dbmeter =db2linear:meter: linear2db;
 limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):dbmeter :db2linear*x@(predelay);
 
 
-//process = blushcomp,blushcomp;
-process = limiter,limiter;
+process = blushcomp,blushcomp;
+//process = limiter,limiter;
 
 /*process = gainHiShelfCrossfade;*/
