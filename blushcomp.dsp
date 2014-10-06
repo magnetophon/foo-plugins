@@ -163,12 +163,12 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 0.5*SR;
+predelay = 0.1*SR;
 
 delayed(x) = x@predelay;
 prevgain=1;
 lookaheadLimiter(x,prevgain,prevtotal,prevstart) = 
-select2(goingdown,0,(prevgain+down)),
+select2(goingdown,currentup,(prevgain+down)),
 (totaldown),
 start
 //threshold:meter
@@ -178,7 +178,7 @@ with {
     goingdown = ((currentlevel)>(threshold))|(prevgain>prevtotal);
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
-    down = (totaldown-start)/predelay;
+    down = (totaldown-start)/(predelay-1);
     //down = totaldown(x)/predelay;
     totaldown = 
        select2(prevgain>=prevtotal, 0  , newdown  );
@@ -187,8 +187,9 @@ with {
     //select2(0-((currentlevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
 
     currentdown = 0-((currentlevel):THRESH(threshold));
+    currentup = 0-((((abs(x@predelay)):linear2db)):THRESH(threshold));
 
-    start = select2(prevgain>=prevtotal, 0  , select2(currentdown<prevtotal,prevstart,prevgain)):dbmeter;
+    start = select2(prevgain>prevtotal, 0  , select2(currentdown<prevtotal,prevstart,prevgain)):dbmeter;
     
     up = 800/SR;
 
@@ -203,7 +204,7 @@ with {
     delaysum(size) = _ <: par(i,rmsMaxSize, @(i)*(i<size)) :> _;
     };
 
-limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):db2linear*x@predelay;
+limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):db2linear*x@(predelay);
 
 
 //process = blushcomp,blushcomp;
