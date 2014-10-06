@@ -163,7 +163,7 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 0.05*SR;
+predelay = 0.5*SR;
 
 delayed(x) = x@predelay;
 prevgain=1;
@@ -174,21 +174,21 @@ start
 //threshold:meter
 with {
     currentlevel = ((abs(x)):linear2db);
-    goingdown = ((currentlevel)>(threshold))|(prevgain>=prevtotal');
+    goingdown = ((currentlevel)>(threshold))|((prevgain>prevtotal));
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
-    down = (totaldown-start)/(predelay-1);
+    down = (prevtotal-prevstart)/(predelay);
     //down = totaldown(x)/predelay;
     totaldown = 
-       select2(prevgain>=prevtotal, 0  , newdown  );
+       select2(goingdown, 0  , newdown  );
     newdown =// (currentlevel+prevgain):THRESH(threshold);
     min(prevtotal,currentdown );
     //select2(0-((currentlevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
 
     currentdown = 0-((currentlevel):THRESH(threshold));
-    currentup = 0-((((abs(x@predelay+1)):linear2db)):THRESH(threshold));
+    currentup = 0;//-((((abs(x@predelay+1)):linear2db)):THRESH(threshold));
 
-    start = select2(prevgain>=prevtotal, 0  , select2(currentdown<prevtotal,prevstart,prevgain)):dbmeter;
+    start = select2(totaldown<prevtotal, 0  , select2(prevgain+down<prevtotal,prevstart,prevgain+down)):dbmeter;
     
     up = 800/SR;
 
