@@ -137,7 +137,8 @@ curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
     p = exp(fact*10*(log(2)));
 };
 
-rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0):max(maxGR:linear2db)
+rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0)
+//:max(maxGR:linear2db)
 with {
     tangent     = x- prevx;
     avgChange   = abs((tangent@1)-(tangent@2)):integrate(IM_size)*decayMult:_+1:pow(decayPower)-1;
@@ -162,19 +163,19 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 0.2*SR;
+predelay = 0.5*SR;
 
 delayed(x) = x@predelay;
 prevgain=1;
 lookaheadLimiter(x,prevgain,prevtotal,prevstart) = 
-select2(goingdown,0,(prevgain+start+down)),
+select2(goingdown,0,(prevgain+down)),
 (totaldown),
 start
 //threshold:meter
 with {
     dbmeter =db2linear:meter: linear2db;
     currentlevel = ((abs(x)):linear2db);
-    goingdown = ((currentlevel+prevgain)>(threshold))|(prevgain>prevtotal);
+    goingdown = ((currentlevel)>(threshold))|(prevgain>prevtotal);
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
     down = (totaldown-start)/predelay;
@@ -205,11 +206,7 @@ with {
 limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):db2linear*x@predelay;
 
 
-
-lookaheadLimite(x,prevgain,prevtotal) =
-select2(abs(x):linear2db-prevgain>threshold,(prevgain+3),(prevgain+4:min(0))),
-select2(abs(x):linear2db-prevgain>threshold,1,2);
-
+//process = blushcomp,blushcomp;
 process = limiter,limiter;
 
 /*process = gainHiShelfCrossfade;*/
