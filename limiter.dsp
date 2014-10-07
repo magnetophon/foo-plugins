@@ -163,35 +163,36 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 1024;
+predelay = 0.2*SR;
+//maximumdown needs a power of 2 as a size
+//predelay = 1024;
 
-delayed(x) = x@predelay;
-prevgain=1;
 lookaheadLimiter(x,prevgain,prevtotal,prevstart) = 
-select2(goingdown,minimumdown,(prevgain+down)),
+select2(goingdown,currentup ,(prevgain+down)),//:min(currentup),
+//currentup ,
 (totaldown),
 start
 //threshold:meter
 with {
     currentlevel = ((abs(x)):linear2db);
-    goingdown = ((currentlevel)>(threshold))|((prevgain>prevtotal));
+    goingdown = ((currentlevel)>(threshold))|((prevgain>prevtotal)):meter;
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
     down = (prevtotal-prevstart)/(predelay);
     //down = totaldown(x)/predelay;
     totaldown = 
-       select2(goingdown, 0  , newdown  );
+       select2(goingdown, currentup   , newdown  );
     newdown =// (currentlevel+prevgain):THRESH(threshold);
     min(prevtotal,currentdown );
     //select2(0-((currentlevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
 
     currentdown = 0-((currentlevel):THRESH(threshold));
-    currentup = minimumdown;// 0-((((abs(x@predelay+1)):linear2db)):THRESH(threshold));
+    currentup =  0-((((abs(x@(predelay))):linear2db)):THRESH(threshold));
 
     start = select2(totaldown<prevtotal, 0  , select2(prevgain+down<prevtotal,prevstart,prevgain+down));
     
  
-minimumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min)):dbmeter;
+maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min)):dbmeter;
 
     up = 800/SR;
 
@@ -211,10 +212,10 @@ minimumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(lo
 
 dbmeter =db2linear:meter: linear2db;
 
-limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):dbmeter :db2linear*x@(predelay);
+limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):dbmeter :db2linear*x@(predelay);
 
 
-//process = blushcomp,blushcomp;
-process = limiter,limiter;
+process = blushcomp,blushcomp;
+//process = limiter,limiter;
 
 /*process = gainHiShelfCrossfade;*/
