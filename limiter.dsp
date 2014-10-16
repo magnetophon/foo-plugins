@@ -97,7 +97,7 @@ bypass_switch = select2( hslider("bypass[tooltip: ]", 0, 0, 1, 1), 1.0, 0.0);
 ratelimit      = ratelimit_group(hslider("[0]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
 maxRateAttack  = ratelimit_group(hslider("[1]max attack[unit:dB/s][tooltip: ]", 1020, 6, 8000 , 1)/SR);
 maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 3813, 6, 8000 , 1)/SR);
-decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 20000 , 0,20000 , 0.001)/100);
+decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 20000 , 0,1000000, 1));
 decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 50, 0, 50 , 0.001));
 IM_size        = ratelimit_group(hslider("[5]IM_size[tooltip: ]",108, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
 
@@ -108,6 +108,10 @@ gainPlusMeter(gain,dry) = (dry * (gain:meter));
 hiShelfPlusMeter(gain,dry) = (dry :high_shelf(gain:meter:linear2db,hiShelfFreq));
 
 gainHiShelfCrossfade(crossfade,gain,dry) = (dry * ((gain:meter:linear2db)*(1-crossfade):db2linear)): high_shelf(((gain:linear2db)*crossfade),hiShelfFreq);
+
+gainLowShelfCrossfade(crossfade,gain,dry) = 
+//dry*(gain:db2linear);
+(dry * ((gain:dbmeter)*(1-crossfade):db2linear)): low_shelf(((gain)*crossfade),hiShelfFreq);
 
 
 crossfade(x,a,b) = a*(1-x),b*x : +;
@@ -163,36 +167,45 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = 0.2*SR;
+predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
+//predelay = 0.5*SR;
 //maximumdown needs a power of 2 as a size
-//predelay = 1024;
+//maxPredelay = 8; // = 0.2ms
+maxPredelay = 256; // = 6ms
+//maxPredelay = 512; // = 12ms
+//maxPredelay = 1024; // = 23ms
+//maxPredelay = 2048; // = 46ms
+//maxPredelay = 8192; // = 186ms
 
 lookaheadLimiter(x,prevgain,prevtotal,prevstart) = 
-select2(goingdown,currentup ,(prevgain+down)),//:min(currentup),
+select2(goingdown,0 ,(prevgain+down)):min(currentup),
 //currentup ,
 (totaldown),
 start
 //threshold:meter
 with {
-    currentlevel = ((abs(x)):linear2db);
-    goingdown = ((currentlevel)>(threshold))|((prevgain>prevtotal)):meter;
+    currentLevel = ((abs(x)):linear2db);
+    tooBig = currentLevel>threshold;
+    notThereYet= prevgain>prevtotal;
+
+    goingdown = (tooBig|notThereYet);
     //prevLin=prevgain:db2linear;
     //down = (totaldown)/predelay;
     down = (prevtotal-prevstart)/(predelay);
     //down = totaldown(x)/predelay;
     totaldown = 
        select2(goingdown, currentup   , newdown  );
-    newdown =// (currentlevel+prevgain):THRESH(threshold);
+    newdown =// (currentLevel+prevgain):THRESH(threshold);
     min(prevtotal,currentdown );
-    //select2(0-((currentlevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
+    //select2(0-((currentLevel):THRESH(threshold))<prevtotal,prevtotal,0-((currentlevel):THRESH(threshold)));
 
-    currentdown = 0-((currentlevel):THRESH(threshold));
+    currentdown = 0-((currentLevel):THRESH(threshold));
     currentup =  0-((((abs(x@(predelay))):linear2db)):THRESH(threshold));
 
     start = select2(totaldown<prevtotal, 0  , select2(prevgain+down<prevtotal,prevstart,prevgain+down));
     
  
-maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min)):dbmeter;
+maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min));
 
     up = 800/SR;
 
@@ -212,10 +225,29 @@ maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(lo
 
 dbmeter =db2linear:meter: linear2db;
 
-limiter(x) = ((lookaheadLimiter(x):((_<: _,( rateLimiter(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit)),_,_))~(_,_,_)):((_),!,!):dbmeter :db2linear*x@(predelay);
+autoRate(fast,slow) = auto(fast,slow)~_
+with {
+auto(fast,slow,prev)= (fast,slow:crossfade(rate));
+rate = ratelimit;
+};
 
 
-process = blushcomp,blushcomp;
-//process = limiter,limiter;
 
-/*process = gainHiShelfCrossfade;*/
+currentLevel = ((abs(_)):linear2db);
+currentdown = 0-((currentLevel):THRESH(threshold));
+
+
+maximumdown =_<: par(i,maxPredelay, currentdown@(i)*(i+1)): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))/maxPredelay;
+
+//lal = par(maxPredelay,)
+
+limiter(x) = maximumdown(x):(_<: _,(rateLimiter(MAX_flt,maxRateDecay) ~ _ ):autoRate):db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
+
+//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((_<: _,(rateLimiter(MAX_flt,maxRateDecay) ~ _ ):autoRate),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
+//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((rateLimiter(MAX_flt,maxRateDecay) ~ _ ),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
+
+
+//process = blushcomp,blushcomp;
+process = limiter,limiter;
+
+/*process = maximumdown ;*/
