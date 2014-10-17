@@ -44,7 +44,7 @@ import ("rms.dsp");
 //the maximum size of the array for calculating the rms mean
 //should be proportional to SR
 // the size of a par() needs to be known at compile time, so (SR/100) doesn't work
-rmsMaxSize = 441; //441
+rmsMaxSize = 512; //441
 
 // 
 MAX_flt = fconstant(int LDBL_MAX, <float.h>);
@@ -65,7 +65,7 @@ shape_group(x)      = post_group(vgroup("[0]shape", x));
 out_group(x)        = post_group(vgroup("[2]", x));
 
 envelop = abs : max ~ -(1.0/SR) : max(db2linear(-70)) : linear2db;
-meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, 0)))):attach);
+meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, 10)))):attach);
 
 drywet        = detector_group(hslider("[0]dry-wet[tooltip: ]", 1.0, 0.0, 1.0, 0.1));
 ingain        = detector_group(hslider("[1] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999));
@@ -117,7 +117,7 @@ gainLowShelfCrossfade(crossfade,gain,dry) =
 crossfade(x,a,b) = a*(1-x),b*x : +;
 
 
-rmsFade = _<:crossfade(peakRMS,_,RMS(rms_speed)); // bypass makes the dsp double as efficient. On silence RMS takes double that (so in my case 7, 13 and 21 %)
+rmsFade = _<:crossfade(peakRMS,(_),RMS(rms_speed)); // bypass makes the dsp double as efficient. On silence RMS takes double that (so in my case 7, 13 and 21 %)
 
 /*COMP = (1/((1/(((_ <: ( HPF : DETECTOR : RATIO : db2linear : max(db2linear(-140)) : min (1) :pow(prePower):linear2db*/
 /*<: ( RATELIMITER ~ _ ),_:crossfade(ratelimit) : db2linear ): max(MIN_flt) : min (MAX_flt)):pow(1/power))):max(db2linear(-140))*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);*/
@@ -126,7 +126,7 @@ detector = ((_ <: ( HPF(hpf_freq) :rmsFade: DETECTOR : RATIO : db2linear:min(1):
 
 //<:_,_:pow(powlim( prePower)):preRateLim:min(1):max(MIN_flt)
 
-preRateLim = _;//linear2db<: _,( rateLimiter(maximum_rate,maximum_rate) ~ _ ):crossfade(ratelimit) : db2linear;
+preRateLim = _;//linear2db<: _,( rateLimit(maximum_rate,maximum_rate) ~ _ ):crossfade(ratelimit) : db2linear;
 
 maxGRshaper = _;//max(maxGR);
 //maxGRshaper = (1/((1/_*maxGR*2*PI:tanh:/(2*PI))/maxGR)):min(1);
@@ -141,7 +141,7 @@ curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
     p = exp(fact*10*(log(2)));
 };
 
-rateLimiter(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0)
+rateLimit(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0)
 //:max(maxGR:linear2db)
 with {
     tangent     = x- prevx;
@@ -156,7 +156,7 @@ with {
     };
 
 COMP = detector:maxGRshaper:(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):tanshape(shape):_*(1-maxGR):_+maxGR:linear2db
-<: _,( rateLimiter(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit) : db2linear;//:( rateLimiter(maxRate) ~ _ );
+<: _,( rateLimit(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit) : db2linear;//:( rateLimit(maxRate) ~ _ );
 
 blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : gainHiShelfCrossfade(gainHS))~_)*(db2linear(outgain));
 
@@ -167,10 +167,11 @@ detect= (linear2db :
 		:RATIO);
         /*:SMOOTH(attack, release) ~ _ );*/
 
-predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
+predelay = hslider("[0]predelay[tooltip: ]", maxPredelay , 1, maxPredelay , 1);
+//predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
 //predelay = 0.5*SR;
 //maximumdown needs a power of 2 as a size
-//maxPredelay = 8; // = 0.2ms
+//maxPredelay = 4; // = 0.1ms
 maxPredelay = 256; // = 6ms
 //maxPredelay = 512; // = 12ms
 //maxPredelay = 1024; // = 23ms
@@ -205,7 +206,7 @@ with {
     start = select2(totaldown<prevtotal, 0  , select2(prevgain+down<prevtotal,prevstart,prevgain+down));
     
  
-maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min));
+    maximumdown = par(i,predelay, currentdown@(i)*(goingdown@(i)*-1+1)  ): seq(j,(log(predelay)/log(2)),par(k,predelay/(2:pow(j+1)),min));
 
     up = 800/SR;
 
@@ -231,23 +232,25 @@ auto(fast,slow,prev)= (fast,slow:crossfade(rate));
 rate = ratelimit;
 };
 
-
+ rateLimiter = (_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit));
 
 currentLevel = ((abs(_)):linear2db);
 currentdown = 0-((currentLevel):THRESH(threshold));
 
 
-maximumdown =_<: par(i,maxPredelay, currentdown@(i)*(i+1)): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))/maxPredelay;
+newLookahead =_<: par(i,maxPredelay, currentdown@(i)*((i+1+predelay-maxPredelay):max(0))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))/predelay;
 
 //lal = par(maxPredelay,)
 
-limiter(x) = maximumdown(x):(_<: _,(rateLimiter(MAX_flt,maxRateDecay) ~ _ ):autoRate):db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
+limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
 
-//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((_<: _,(rateLimiter(MAX_flt,maxRateDecay) ~ _ ):autoRate),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
-//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((rateLimiter(MAX_flt,maxRateDecay) ~ _ ),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
+//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):autoRate),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
+//limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((rateLimit(MAX_flt,maxRateDecay) ~ _ ),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
 
 
 //process = blushcomp,blushcomp;
 process = limiter,limiter;
+//process = limiter,(_<:limiter,((RMS(16),RMS(rms_speed):-):meter));
+
 
 /*process = maximumdown ;*/
