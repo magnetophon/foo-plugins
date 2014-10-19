@@ -65,7 +65,7 @@ shape_group(x)      = post_group(vgroup("[0]shape", x));
 out_group(x)        = post_group(vgroup("[2]", x));
 
 envelop = abs : max ~ -(1.0/SR) : max(db2linear(-70)) : linear2db;
-meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, 10)))):attach);
+meter = meter_group(_<:(_, (linear2db :(vbargraph("[1][unit:dB][tooltip: input level in dB]", -60, 0)))):attach);
 
 drywet        = detector_group(hslider("[0]dry-wet[tooltip: ]", 1.0, 0.0, 1.0, 0.1));
 ingain        = detector_group(hslider("[1] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999));
@@ -79,8 +79,11 @@ release       = detector_group(time_ratio_release(hslider("[7] Release [unit:ms]
 hpf_freq      = detector_group( hslider("[8]sidechain hpf[tooltip: ]", 154, 1, 400, 1));
 
 powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
+limPowerScale(x) =((x>=0)*(1/(x+1)))+((x<0)* ((x*-1)+1));
 
 power          = shape_group(hslider("[1]power[tooltip: ]", 1.881 , -33, 33 , 0.001):powerScale);
+limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , 0.5, 16 , 0.001));
+IMpower        = shape_group(hslider("[1]IMpower[tooltip: ]", 1 , -16, 16 , 0.001)):limPowerScale;
 maxGR          = shape_group(hslider("[2] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-15, -60, 0, 0.1) : db2linear : smooth(0.999));
 curve          = shape_group(hslider("[3]curve[tooltip: ]", 0, -1, 1 , 0.001)*-1);
 shape          = shape_group(((hslider("[4]shape[tooltip: ]", 94, 1, 100 , 0.001)*-1)+101):pow(2));
@@ -144,17 +147,19 @@ curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
 rateLimit(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0)
 //:max(maxGR:linear2db)
 with {
-    tangent     = x- prevx;
-    avgChange   = abs((tangent@1)-(tangent@2)):integrate(IM_size)*decayMult:_+1:pow(decayPower)-1;
-    newtangent  = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
-    plus        = tangent*((abs(avgChange)*-1):db2linear);
-    minus       = tangent;//*((abs(avgChange)*0.5):db2linear);
+    tangent       = x- prevx;
+    actualTangent  = prevx - prevx';
+    avgChange      = abs((actualTangent)-(actualTangent@1)):pow(IMpower):integrate(IM_size):pow(1/IMpower):(SMOOTH(attack, release) ~ _)*decayMult:_+1:pow(decayPower)-1:mymeter;
+    newtangent     = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
+    plus           = tangent*(((abs(avgChange)*-1):db2linear));
+    minus          = tangent;//*((abs(avgChange)*0.5):db2linear);
        //select2(abs(tangent)>maxRate,tangent,maxRate);
 	integrate(size,x) = delaysum(size, x)/size;
     
     delaysum(size) = _ <: par(i,rmsMaxSize, @(i)*(i<size)) :> _;
     };
 
+mymeter = meter_group(_<:(_, ( (vbargraph("[1][unit:dB][tooltip: input level in dB]", 0, 144)))):attach);
 COMP = detector:maxGRshaper:(_-maxGR)*(1/(1-maxGR)): curve_pow(curve):tanshape(shape):_*(1-maxGR):_+maxGR:linear2db
 <: _,( rateLimit(maxRateAttack,maxRateDecay) ~ _ ):crossfade(ratelimit) : db2linear;//:( rateLimit(maxRate) ~ _ );
 
@@ -172,8 +177,8 @@ predelay = hslider("[0]predelay[tooltip: ]", maxPredelay , 1, maxPredelay , 1);
 //predelay = 0.5*SR;
 //maximumdown needs a power of 2 as a size
 //maxPredelay = 4; // = 0.1ms
-maxPredelay = 256; // = 6ms
-//maxPredelay = 512; // = 12ms
+//maxPredelay = 256; // = 6ms
+maxPredelay = 512; // = 12ms
 //maxPredelay = 1024; // = 23ms
 //maxPredelay = 2048; // = 46ms
 //maxPredelay = 8192; // = 186ms
@@ -232,25 +237,42 @@ auto(fast,slow,prev)= (fast,slow:crossfade(rate));
 rate = ratelimit;
 };
 
- rateLimiter = (_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit));
+rateLimiter = (_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit));
 
-currentLevel = ((abs(_)):linear2db);
-currentdown = 0-((currentLevel):THRESH(threshold));
+currentLevel(x) = ((abs(x)):linear2db);
+currentdown(x) = 0-((currentLevel(x)):THRESH(threshold));
+
+//serial implementation seems slightly more cpu efficient at high gain reduction,
+//but parallel impl
+
+//((tanh((x^36)*6)/tanh(6))*0.5+0.5)*tanh(6*x)/tanh(6)
+ attackShaper(x)= ((((tan(x:pow(limPower)*(limPower:pow(0.5)))/tan(limPower:pow(0.5)))*(1-peakRMS))+peakRMS)*tan(limPower:pow(0.5)*x)/tan(limPower:pow(0.5))),x:crossfade(gainHS);
+
+//:pow(limPower)
+//: curve_pow(curve)
+newLookahead(x) =currentdown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper:min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min));
 
 
-newLookahead =_<: par(i,maxPredelay, currentdown@(i)*((i+1+predelay-maxPredelay):max(0))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))/predelay;
-
-//lal = par(maxPredelay,)
-
+/*newLookahead(x) =currentdown(x): seq(i,maxPredelay, currentdown(x)@(i+1)*((i+1+predelay-maxPredelay):max(0)),_: min)/predelay;*/
 limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
+/*limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay):*;//gainLowShelfCrossfade(gainHS);*/
 
 //limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):autoRate),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
 //limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((rateLimit(MAX_flt,maxRateDecay) ~ _ ),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
 
+lowShelfCurrentDown(x) = ((currentdown(x))/(abs(threshold)+1))*30;
+//lowShelfCurrentDown(x) = (0:seq(i,60,((_,(abs(x:low_shelf(-0.5*(i+1),hiShelfFreq))<(threshold:db2linear))):+)))*0.5;
+
+lowShelfLookahead(x) =lowShelfCurrentDown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min));
+
+lowShelfLimiter(x) = (x@(maxPredelay-1)):low_shelf((lowShelfLookahead (x):rateLimiter:dbmeter) ,hiShelfFreq);//gainLowShelfCrossfade(gainHS);
 
 //process = blushcomp,blushcomp;
+//process = lowShelfLimiter,lowShelfLimiter;
 process = limiter,limiter;
 //process = limiter,(_<:limiter,((RMS(16),RMS(rms_speed):-):meter));
+//process = highpass(3 ,hiShelfFreq);
 
-
-/*process = maximumdown ;*/
+//process(x) = lowShelfCurrentDown(x) :dbmeter ;
+//.70710713 rms
+//.26 smr
