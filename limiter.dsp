@@ -44,7 +44,9 @@ import ("rms.dsp");
 //the maximum size of the array for calculating the rms mean
 //should be proportional to SR
 // the size of a par() needs to be known at compile time, so (SR/100) doesn't work
-rmsMaxSize = 512; //441
+//rmsMaxSize = 128;
+//rmsMaxSize = 256;
+rmsMaxSize = 512;
 
 // 
 MAX_flt = fconstant(int LDBL_MAX, <float.h>);
@@ -82,8 +84,8 @@ powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
 limPowerScale(x) =((x>=0)*(1/(x+1)))+((x<0)* ((x*-1)+1));
 
 power          = shape_group(hslider("[1]power[tooltip: ]", 1.881 , -33, 33 , 0.001):powerScale);
-limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , 0.5, 16 , 0.001));
-IMpower        = shape_group(hslider("[1]IMpower[tooltip: ]", 1 , -16, 16 , 0.001)):limPowerScale;
+limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , 0.01, 32 , 0.001));
+IMpower        = shape_group(hslider("[1]IMpower[tooltip: ]", -16 , -64, 64 , 0.001)):limPowerScale;
 maxGR          = shape_group(hslider("[2] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-15, -60, 0, 0.1) : db2linear : smooth(0.999));
 curve          = shape_group(hslider("[3]curve[tooltip: ]", 0, -1, 1 , 0.001)*-1);
 shape          = shape_group(((hslider("[4]shape[tooltip: ]", 94, 1, 100 , 0.001)*-1)+101):pow(2));
@@ -100,8 +102,8 @@ bypass_switch = select2( hslider("bypass[tooltip: ]", 0, 0, 1, 1), 1.0, 0.0);
 ratelimit      = ratelimit_group(hslider("[0]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
 maxRateAttack  = ratelimit_group(hslider("[1]max attack[unit:dB/s][tooltip: ]", 1020, 6, 8000 , 1)/SR);
 maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 3813, 6, 8000 , 1)/SR);
-decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 20000 , 0,1000000, 1));
-decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 50, 0, 50 , 0.001));
+decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 200 , 1,5002, 1))*10;
+decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 10, 0, 10 , 0.001));
 IM_size        = ratelimit_group(hslider("[5]IM_size[tooltip: ]",108, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
 
 powlim(x,base) = x:max(log(MAX_flt)/log(base)):  min(log(MIN_flt)/log(base));
@@ -144,17 +146,18 @@ curve_pow(fact,x) = ((x*(x>0):pow(p))+(x*-1*(x<=0):pow(p)*-1)) with
     p = exp(fact*10*(log(2)));
 };
 
-rateLimit(maxRateAttack,maxRateDecay,prevx,x) = prevx+newtangent:min(0)
+rateLimit(maxRateAttack,maxRateDecay,prevx,x) = (prevx+newtangent:min(0)),avgChange
 //:max(maxGR:linear2db)
 with {
     tangent       = x- prevx;
     actualTangent  = prevx - prevx';
-    avgChange      = abs((actualTangent)-(actualTangent@1)):pow(IMpower):integrate(IM_size):pow(1/IMpower):(SMOOTH(attack, release) ~ _)*decayMult:_+1:pow(decayPower)-1:mymeter;
+    avgChange      = abs((actualTangent)):pow(IMpower):integrate(IM_size):pow(1/IMpower)*decayMult:_+1:pow(decayPower)-1:(SMOOTH(attack, release) ~ _ ):mymeter:min(500);
+    //avgChange      = abs((actualTangent)-(actualTangent@1)):pow(IMpower):integrate(IM_size):pow(1/IMpower)*decayMult:_+1:pow(decayPower)-1:mymeter;
     newtangent     = select2(tangent>0,minus,plus):max(maxRateAttack*-1):min(maxRateDecay);
     plus           = tangent*(((abs(avgChange)*-1):db2linear));
     minus          = tangent;//*((abs(avgChange)*0.5):db2linear);
        //select2(abs(tangent)>maxRate,tangent,maxRate);
-	integrate(size,x) = delaysum(size, x)/size;
+	integrate(size,x) = (delaysum(size, x))/size;
     
     delaysum(size) = _ <: par(i,rmsMaxSize, @(i)*(i<size)) :> _;
     };
@@ -170,15 +173,16 @@ blushcomp =_*ingain: (_ <:( crossfade(feedFwBw,_,_),_ : ( COMP , _ ) : gainHiShe
 detect= (linear2db :
 		THRESH(threshold)
 		:RATIO);
-        /*:SMOOTH(attack, release) ~ _ );*/
+        /*:(SMOOTH(attack, release) ~ _ ));*/
 
 predelay = hslider("[0]predelay[tooltip: ]", maxPredelay , 1, maxPredelay , 1);
 //predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
 //predelay = 0.5*SR;
 //maximumdown needs a power of 2 as a size
 //maxPredelay = 4; // = 0.1ms
-//maxPredelay = 256; // = 6ms
-maxPredelay = 512; // = 12ms
+//maxPredelay = 128; // = 3ms
+maxPredelay = 256; // = 6ms
+//maxPredelay = 512; // = 12ms
 //maxPredelay = 1024; // = 23ms
 //maxPredelay = 2048; // = 46ms
 //maxPredelay = 8192; // = 186ms
@@ -237,7 +241,8 @@ auto(fast,slow,prev)= (fast,slow:crossfade(rate));
 rate = ratelimit;
 };
 
-rateLimiter = (_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit));
+rateLimiter = (_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):crossfade(ratelimit),_);
+
 
 currentLevel(x) = ((abs(x)):linear2db);
 currentdown(x) = 0-((currentLevel(x)):THRESH(threshold));
@@ -246,15 +251,49 @@ currentdown(x) = 0-((currentLevel(x)):THRESH(threshold));
 //but parallel impl
 
 //((tanh((x^36)*6)/tanh(6))*0.5+0.5)*tanh(6*x)/tanh(6)
- attackShaper(x)= ((((tan(x:pow(limPower)*(limPower:pow(0.5)))/tan(limPower:pow(0.5)))*(1-peakRMS))+peakRMS)*tan(limPower:pow(0.5)*x)/tan(limPower:pow(0.5))),x:crossfade(gainHS);
 
 //:pow(limPower)
 //: curve_pow(curve)
-newLookahead(x) =currentdown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper:min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min));
+newLookahead(x,avgChange) =currentdown(x)<: par(i,maxPredelay, _@(i)*(((i+1)/maxPredelay):attackShaper)): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
+//newLookahead(x,avgChange) =currentdown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper:min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
+with {
+    autoAttack = (avgChange/144):min(1);
+    //autoAttack = (tanh(avgChange/144)/tanh(1)):min(0):max(1);
+    attackShaper(x)= x,(((x:pow(limPower)),(x:pow(.25))):crossfade(autoAttack)):crossfade(gainHS);
+    //attackShaper(x)= rdtable(tablesize, mywaveform, int(x*tablesize) );
+    //attackShaper(x)= x:pow(limPowerScale((autoAttack*2-1)*2));
+    /*attackShaper(x)= (*/
+        /*(((tanh(x:pow(limPower)*(limPower:pow(0.5)))/tanh(limPower:pow(0.5)))*(1-autoAttack))+autoAttack)*/
+        /**tanh(limPower:pow(0.5)*x)*/
+        /*/tanh(limPower:pow(0.5))*/
+    /*),x:crossfade(gainHS);*/
+    /*attackShaper(x)= (*/
+        /*tanh(3*x)/tanh(3)*/
+    /*),x:crossfade(gainHS);*/
+    /*attackShaper(x)= (*/
+        /*(((tan(x:pow(limPower)*(limPower:pow(0.5)))/tan(limPower:pow(0.5)))*(1-autoAttack))+autoAttack)*/
+        /**tan(3*x)*/
+        /*/tan(3)*/
+    /*),x:crossfade(gainHS);*/
+tablesize 	= maxPredelay;
 
+time 		= (+(1)~_ ) - 1; 			// 0,1,2,3,...
+mywaveform 	= (float(time)/float(tablesize));
+}
+;
+
+
+
+/*
+((((tanh(x^32*5.6)/tanh(5.6))*0.5)+0.5)*tanh(5.6*x)/tanh(5.6))
+((((tanh(x^32*5.6)/tanh(5.6))*0.2)+0.8)*tanh(2*x)/tanh(2))
+((((tanh(x^32*5.6)/tanh(5.6))*0.5)+0.5)*tanh(3*x)/tanh(3))
+((((tanh(x^32*5.6)/tanh(5.6))*0.8)+0.2)*tanh(8*x)/tanh(8))
+
+*/
 
 /*newLookahead(x) =currentdown(x): seq(i,maxPredelay, currentdown(x)@(i+1)*((i+1+predelay-maxPredelay):max(0)),_: min)/predelay;*/
-limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
+limiter(x) = (newLookahead (x):rateLimiter)~(!,_):(_,!):db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
 /*limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay):*;//gainLowShelfCrossfade(gainHS);*/
 
 //limiter(x) = ((lookaheadLimiter(x):(_,_,_))~(_,_,_)):((_<: _,(rateLimit(MAX_flt,maxRateDecay) ~ _ ):autoRate),!,!):db2linear:meter ,x@(predelay):*;//gainLowShelfCrossfade(gainHS);
@@ -274,5 +313,5 @@ process = limiter,limiter;
 //process = highpass(3 ,hiShelfFreq);
 
 //process(x) = lowShelfCurrentDown(x) :dbmeter ;
-//.70710713 rms
+//.70710713 rms so first pow(x) then pow(1/x)
 //.26 smr
