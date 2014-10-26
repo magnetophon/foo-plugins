@@ -74,7 +74,7 @@ drywet        = detector_group(hslider("[0]dry-wet[tooltip: ]", 1.0, 0.0, 1.0, 0
 ingain        = detector_group(hslider("[1] Input Gain [unit:dB]   [tooltip: The input signal level is increased by this amount (in dB) to make up for the level lost due to compression]",0, -40, 40, 0.1) : db2linear : smooth(0.999));
 peakRMS       = detector_group(hslider("[2] peak/RMS [tooltip: Peak or RMS level detection",1, 0, 1, 0.001));
 rms_speed     = detector_group(hslider("[3]RMS size[tooltip: ]",96, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
-threshold     = detector_group(hslider("[4] Threshold [unit:dB]   [tooltip: When the signal level exceeds the Threshold (in dB), its level is compressed according to the Ratio]", -27.1, -80, 0, 0.1));
+threshold     = detector_group(hslider("[4] Threshold [unit:dB]   [tooltip: When the signal level exceeds the Threshold (in dB), its level is compressed according to the Ratio]", -12, -60, 0, 0.1));
 knee          = detector_group(hslider("[4]knee", -27.1, -80, 0, 0.1));
 ratio         = detector_group(hslider("[5] Ratio   [tooltip: A compression Ratio of N means that for each N dB increase in input signal level above Threshold, the output level goes up 1 dB]", 20, 1, 20, 0.1));
 attack        = detector_group(time_ratio_attack(hslider("[6] Attack [unit:ms]   [tooltip: Time constant in ms (1/e smoothing time) for the compression gain to approach (exponentially) a new lower target level (the compression `kicking in')]", 23.7, 0.1, 500, 0.1)/1000)) ;
@@ -86,7 +86,7 @@ powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
 limPowerScale(x) =((x>=0)*(1/(x+1)))+((x<0)* ((x*-1)+1));
 
 power          = shape_group(hslider("[1]power[tooltip: ]", 1.881 , -33, 33 , 0.001):powerScale);
-limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , -128, 128 , 0.001)):limPowerScale;
+limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , 1, 128 , 0.001));
 IMpower        = shape_group(hslider("[1]IMpower[tooltip: ]", -64 , -128, 0 , 0.001)):limPowerScale;
 maxGR          = shape_group(hslider("[2] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-15, -60, 0, 0.1) : db2linear : smooth(0.999));
 curve          = shape_group(hslider("[3]curve[tooltip: ]", 0, -1, 1 , 0.001)*-1);
@@ -103,7 +103,7 @@ bypass_switch = select2( hslider("bypass[tooltip: ]", 0, 0, 1, 1), 1.0, 0.0);
 
 ratelimit      = ratelimit_group(hslider("[0]ratelimit amount[tooltip: ]", 1, 0, 1 , 0.001));
 maxRateAttack  = ratelimit_group(hslider("[1]max attack[unit:dB/s][tooltip: ]", 1020, 6, 8000 , 1)/SR);
-maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 33, 6, 1000 , 1)/SR);
+maxRateDecay   = ratelimit_group(hslider("[2]max decay[unit:dB/s][tooltip: ]", 64, 6, 500 , 1)/SR);
 decayMult      = ratelimit_group(hslider("[3]decayMult[tooltip: ]", 200 , 1,50020, 1))*10;
 decayPower     = ratelimit_group(hslider("[4]decayPower[tooltip: ]", 10, 0, 10 , 0.001));
 IM_size        = ratelimit_group(hslider("[5]IM_size[tooltip: ]",108, 1,   rmsMaxSize,   1)*44100/SR); //0.0005 * min(192000.0, max(22050.0, SR));
@@ -279,8 +279,8 @@ kneeLookahead(x) = ((kneeCurrentDown(x):(SMOOTH(5, 100) ~ _ )),(kneeCurrentDown(
 //newLookahead(x,lastdown,avgChange) = currentdown(x)<: par(i,maxPredelay, _@(i)*(((i+1+predelay-maxPredelay)/predelay):attackShaper)): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
 
 newLookahead(x,lastdown) = 
-(currentdown(x)<: par(i,maxPredelay, (_@(i):max(lastdown*hold(i))) ): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min)))
-,(currentdown(x)<: par(i,pd, _@(i+pd)*(((i+1)/pd):attackShaper)): seq(j,(log(pd)/log(2)),par(k,pd/(2:pow(j+1)),min)))
+gainHS*(currentdown(x)<: par(i,maxPredelay, (_@(i):max(lastdown*hold(i))) ): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min)))
+,(currentdown(x)<: par(i,pd, _@((i-pd+1+maxPredelay):min(0))*(((i+1)/pd):attackShaper)): seq(j,(log(pd)/log(2)),par(k,pd/(2:pow(j+1)),min)))
 //,currentdown(x@(maxPredelay-1))
 :min
 //newLookahead(x,lastdown,avgChange) = currentdown(x)<: par(i,maxPredelay, (_@(i)*normal(i)),(_@(i):max(lastdown*hold(i))):min ): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
@@ -288,7 +288,7 @@ newLookahead(x,lastdown) =
 
 //newLookahead(x,avgChange) =currentdown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper:min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
 with {
-    pd = 256;
+    pd = 1024;
     hold(i) = 1;//(gainHS*maxPredelay*(((i+1):max(0))/maxPredelay)):min(1);
     //hold(i) = atan((gainHS+0.0001)*maxPredelay*(((i+1+predelay-maxPredelay):max(0))/predelay))/atan((gainHS+0.0001)*maxPredelay);
     normal(i) = ((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper);
@@ -344,7 +344,7 @@ mywaveform 	= (float(time)/float(tablesize));
 */
 
 /*newLookahead(x) =currentdown(x): seq(i,maxPredelay, currentdown(x)@(i+1)*((i+1+predelay-maxPredelay):max(0)),_: min)/predelay;*/
-limiter(x) = (newLookahead (x):rateLimiter)~(_,!):(_,!):db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);
+limiter(x) = (newLookahead (x):rateLimiter)~(_,!):(_,!):db2linear:meter ,x@(maxPredelay):*;//gainLowShelfCrossfade(gainHS);
 /*limiter(x) = ((newLookahead (x),kneeLookahead(x)):min:rateLimiter)~(!,_):(_,!):db2linear:meter ,x@(maxPredelay-1):*;//gainLowShelfCrossfade(gainHS);*/
 /*limiter(x) = newLookahead (x):rateLimiter:db2linear:meter ,x@(maxPredelay):*;//gainLowShelfCrossfade(gainHS);*/
 
