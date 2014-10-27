@@ -49,6 +49,21 @@ import ("rms.dsp");
 rmsMaxSize = 512;
 //rmsMaxSize = 1024;
 
+pd = 1024;
+
+
+predelay = hslider("[0]predelay[tooltip: ]", maxPredelay , 1, maxPredelay , 1);
+//predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
+//predelay = 0.5*SR;
+//maximumdown needs a power of 2 as a size
+//maxPredelay = 4; // = 0.1ms
+//maxPredelay = 128; // = 3ms
+//maxPredelay = 256; // = 6ms
+//maxPredelay = 512; // = 12ms
+maxPredelay = 1024; // = 23ms
+//maxPredelay = 2048; // = 46ms
+//maxPredelay = 8192; // = 186ms
+
 // 
 MAX_flt = fconstant(int LDBL_MAX, <float.h>);
 MIN_flt = fconstant(int LDBL_MIN, <float.h>);
@@ -84,14 +99,22 @@ hpf_freq      = detector_group( hslider("[8]sidechain hpf[tooltip: ]", 154, 1, 4
 
 powerScale(x) =((x>=0)*(1/((x+1):pow(3))))+((x<0)* (((x*-1)+1):pow(3)));
 limPowerScale(x) =((x>=0)*(1/(x+1)))+((x<0)* ((x*-1)+1));
+//:min(.9921875):punchScale = 128 equals +/- 10 sample lookahead
+//:min(.995):punchScale = 200 equals +/- 7 sample lookahead
+
+//punchScale(x) = ((-0.02804954+(x:min(.995)))/(0.9719504-0.9719504*(x:min(.995))))+1.029;
+punchScale(x) = (x+1):pow(7);
 
 power          = shape_group(hslider("[1]power[tooltip: ]", 1.881 , -33, 33 , 0.001):powerScale);
 limPower       = shape_group(hslider("[1]power[tooltip: ]", 1 , 1, 128 , 0.001));
+limPunch      = shape_group(hslider("[1]punch[tooltip: ]", 0 , 0, 1 , 0.001)):punchScale;
 IMpower        = shape_group(hslider("[1]IMpower[tooltip: ]", -64 , -128, 0 , 0.001)):limPowerScale;
 maxGR          = shape_group(hslider("[2] Max Gain Reduction [unit:dB]   [tooltip: The maximum amount of gain reduction]",-15, -60, 0, 0.1) : db2linear : smooth(0.999));
 curve          = shape_group(hslider("[3]curve[tooltip: ]", 0, -1, 1 , 0.001)*-1);
 shape          = shape_group(((hslider("[4]shape[tooltip: ]", 94, 1, 100 , 0.001)*-1)+101):pow(2));
 
+mtr = meter_group(_<:(_, ( (vbargraph("punch", 0, 255)))):attach);
+ = meter_group(_<:(_, ( (vbargraph("punch", 0, 255)))):attach);
 
 feedFwBw     = out_group(hslider("[0]feedback/feedforward[tooltip: ]", 0, 0, 1 , 0.001));
 hiShelfFreq  = out_group(hslider("[1]hi shelf freq[tooltip: ]",134, 1,   400,   1));
@@ -183,17 +206,6 @@ detect= (linear2db :
 		:RATIO);
         /*:(SMOOTH(attack, release) ~ _ ));*/
 
-predelay = hslider("[0]predelay[tooltip: ]", maxPredelay , 1, maxPredelay , 1);
-//predelay = hslider("[0]predelay[tooltip: ]", 1, 0.0, 24, 0.001)*SR*0.001:int:max(1);
-//predelay = 0.5*SR;
-//maximumdown needs a power of 2 as a size
-//maxPredelay = 4; // = 0.1ms
-//maxPredelay = 128; // = 3ms
-//maxPredelay = 256; // = 6ms
-//maxPredelay = 512; // = 12ms
-maxPredelay = 1024; // = 23ms
-//maxPredelay = 2048; // = 46ms
-//maxPredelay = 8192; // = 186ms
 
 lookaheadLimiter(x,prevgain,prevtotal,prevstart) = 
 select2(goingdown,0 ,(prevgain+down)):min(currentup),
@@ -280,7 +292,7 @@ kneeLookahead(x) = ((kneeCurrentDown(x):(SMOOTH(5, 100) ~ _ )),(kneeCurrentDown(
 
 newLookahead(x,lastdown) = 
 gainHS*(currentdown(x)<: par(i,maxPredelay, (_@(i):max(lastdown*hold(i))) ): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min)))
-,(currentdown(x)<: par(i,pd, _@((i-pd+1+maxPredelay):min(0))*(((i+1)/pd):attackShaper)): seq(j,(log(pd)/log(2)),par(k,pd/(2:pow(j+1)),min)))
+,(currentdown(x)<: par(i,pd, _@((i+1-pd+maxPredelay):max(0))*(((i+1)/pd):attackShaper)): seq(j,(log(pd)/log(2)),par(k,pd/(2:pow(j+1)),min)))
 //,currentdown(x@(maxPredelay-1))
 :min
 //newLookahead(x,lastdown,avgChange) = currentdown(x)<: par(i,maxPredelay, (_@(i)*normal(i)),(_@(i):max(lastdown*hold(i))):min ): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
@@ -288,7 +300,6 @@ gainHS*(currentdown(x)<: par(i,maxPredelay, (_@(i):max(lastdown*hold(i))) ): seq
 
 //newLookahead(x,avgChange) =currentdown(x)<: par(i,maxPredelay, _@(i)*((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper:min(1))): seq(j,(log(maxPredelay)/log(2)),par(k,maxPredelay/(2:pow(j+1)),min))
 with {
-    pd = 1024;
     hold(i) = 1;//(gainHS*maxPredelay*(((i+1):max(0))/maxPredelay)):min(1);
     //hold(i) = atan((gainHS+0.0001)*maxPredelay*(((i+1+predelay-maxPredelay):max(0))/predelay))/atan((gainHS+0.0001)*maxPredelay);
     normal(i) = ((((i+1+predelay-maxPredelay):max(0))/predelay):attackShaper);
@@ -301,7 +312,7 @@ with {
     
     //attackShaper(x)= atan(x:pow(limPower)*5)/atan(5),((atan(x:pow(limPower)*5)/atan(5),(atan(5*x)/atan(5))):crossfade(autoAttack)):crossfade(gainHS);
 
-    attackShaper(x)= x:pow(limPower);//atan((gainHS+0.0001)*128*x)/atan((gainHS+0.0001)*128);
+    attackShaper(x)= x:pow(limPunch);//atan((gainHS+0.0001)*128*x)/atan((gainHS+0.0001)*128);
 
     //attackShaper(x)= x,((atan(x:pow(limPower)*5)/atan(5),(atan(5*x)/atan(5))):crossfade(autoAttack)):crossfade(gainHS);
     
